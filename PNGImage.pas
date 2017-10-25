@@ -513,6 +513,9 @@ type
     {Returns a pixel}
     function GetPixels(const X, Y: Integer): TColor; virtual;
     procedure SetPixels(const X, Y: Integer; const Value: TColor); virtual;
+
+    function getPixelFormat:TPixelFormat;
+
   public
     {Gamma table array}
     GammaTable: Array[Byte] of Byte;
@@ -601,6 +604,8 @@ type
       SetPalette;{$ENDIF}
     {Returns the version}
     property Version: String read GetLibraryVersion;
+    property PixelFormat: TPixelFormat read getPixelFormat;
+
   end;
 
   {Chunk name object}
@@ -5733,6 +5738,29 @@ begin
         Result := GetRGBLinePixel(Self, X, Y)
     end {with}
   else Result := 0
+end;
+
+{Returns the loaded pixel format}
+function TPngObject.getPixelFormat:TPixelFormat;
+begin
+ case header.ColorType of
+  COLOR_GRAYSCALE: result:=pf1bit;
+  COLOR_RGB: result:=pf24bit;
+  COLOR_PALETTE:
+   begin
+    Result:=pf8bit;
+   end;
+  COLOR_GRAYSCALEALPHA:
+   begin
+    result:=pf8bit;
+   end;
+  COLOR_RGBALPHA:
+   begin
+    result:=pf32bit;
+   end;
+  else
+   result:=pfCustom;
+  end;
 end;
 
 {Returns the image palette}
