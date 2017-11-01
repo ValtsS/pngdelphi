@@ -5,6 +5,8 @@ interface
 uses PNGImage, Windows, Classes, Graphics;
 
 type TPNGImage = class(TBitmap)
+ protected
+       FTransparentColor:TColor;
        Function P:TPNGObject;
  public
        procedure Assign(Source: TPersistent); override;
@@ -19,6 +21,9 @@ type TPNGImage = class(TBitmap)
        procedure SaveToClipboardFormat(var AFormat: Word; var AData: THandle; var APalette: HPALETTE); override;
 
        procedure SaveToStream(Stream: TStream); override;
+
+       property TransparentColor:TColor read FTransparentColor;
+
 end;
 
 implementation
@@ -39,34 +44,8 @@ end;
 
 procedure TPNGImage.Assign(Source: TPersistent);
 var po:TPNGObject;
-    x, y:integer;
-    d:pCardinal;
-    al:pByteArray;
 begin
-
- if Source is TPNGObject then begin
-  po:=source as TPNGObject;
-
-  if po.PixelFormat=pf32bit then begin
-
-  inherited;
-  // Convert to RGBA, add alpha
-  if ( self.PixelFormat<>pf32bit) then begin
-   self.PixelFormat:=pf32bit;
-    for y:=0 to po.Height-1 do begin
-     d:=self.ScanLine[y];
-     al:=po.AlphaScanline[y];
-      for x:=0 to po.Width-1 do begin
-       d^:=(d^ and $FFFFFF) or (al[x] shl 24);
-       d:=pcardinal(cardinal(d)+4);
-      end;
-    end;
-   end;
-  end else inherited;
-
- end else inherited;
-
-
+ inherited;
 end;
 
 

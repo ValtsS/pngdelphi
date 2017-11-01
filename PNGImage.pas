@@ -5175,7 +5175,7 @@ procedure TPngObject.AssignTo(Dest: TPersistent);
     begin
       {Always use 24bits for partial transparency}
       if TransparencyMode = ptmPartial then
-        DetectPixelFormat := pf24bit
+        DetectPixelFormat := pf32bit
       else
         case BitDepth of
           {Only supported by COLOR_PALETTE}
@@ -5185,13 +5185,33 @@ procedure TPngObject.AssignTo(Dest: TPersistent);
           8, 16:
             case ColorType of
               COLOR_RGB, COLOR_GRAYSCALE: DetectPixelFormat := pf24bit;
-              COLOR_PALETTE: DetectPixelFormat := pf8bit;
+              COLOR_PALETTE:
+               if TransparencyMode= ptmBit then
+                DetectPixelFormat := pf32bit
+               else
+                DetectPixelFormat := pf8bit;
+
               else raise Exception.Create('');
             end {case ColorFormat of}
           else raise Exception.Create('');
         end {case BitDepth of}
     end {with Header}
   end;
+
+ procedure DoRGBA(target:TBitmap; src:TPNGObject);
+ var x,y:integer;
+     d:pCardinal;
+     al:pByteArray;
+ begin
+    for y:=0 to src.Height-1 do begin
+     d:=target.ScanLine[y];
+     al:=src.AlphaScanline[y];
+      for x:=0 to src.Width-1 do begin
+       d^:=(d^ and $FFFFFF) or (al[x] shl 24);
+       d:=pcardinal(cardinal(d)+4);
+      end;
+    end;
+ end;
 var
   TRNS: TChunkTRNS;
 {$ENDIF}
@@ -5210,8 +5230,13 @@ begin
     TBitmap(Dest).Height := Height;
     TBitmap(Dest).Canvas.Draw(0, 0, Self);
 
+    if TransparencyMode = ptmPartial then
+    begin
+     DoRGBA(TBitmap(Dest), self);
+    end;
+
     {Copy transparency mode}
-    if (TransparencyMode = ptmBit) then
+    if (TransparencyMode = ptmBit) and (TBitmap(Dest).PixelFormat <> pf32bit) then
     begin
       TRNS := Chunks.ItemFromClass(TChunkTRNS) as TChunkTRNS;
       TBitmap(Dest).TransparentColor := TRNS.TransparentColor;
