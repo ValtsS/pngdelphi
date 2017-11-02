@@ -211,7 +211,7 @@ uses
  zlibpas, pnglang;
 
 const
-  LibraryVersion = '1.564';
+  LibraryVersion = '1.565';
 
 {$IFNDEF UseDelphi}
   const
