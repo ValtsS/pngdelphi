@@ -563,7 +563,7 @@ type
     {Assigns to another object}
     procedure AssignTo(Dest: TPersistent);{$IFDEF UseDelphi}override;{$ENDIF}
     {Assigns from a windows bitmap handle}
-    procedure AssignHandle(Handle: HBitmap; Transparent: Boolean;
+    procedure AssignBMPHandle(BMP: TBitmap; Transparent: Boolean;
       TransparentColor: ColorRef);
     {Draws the image into a canvas}
     procedure Draw(ACanvas: TCanvas; const Rect: TRect);
@@ -4419,7 +4419,7 @@ begin
   {Copy contents from a TBitmap}
   {$IFDEF UseDelphi}else if Source is TBitmap then
     with Source as TBitmap do
-      AssignHandle(Handle, Transparent,
+      AssignBMPHandle(Source as TBitmap, Transparent,
         ColorToRGB(TransparentColor)){$ENDIF}
   {Unknown source, let ancestor deal with it}
   else
@@ -5083,11 +5083,13 @@ end;
 {Loads data from clipboard}
 procedure TPngObject.LoadFromClipboardFormat(AFormat: Word;
   AData: THandle; APalette: HPalette);
+var bmp:TBitmap;
 begin
-  with TBitmap.Create do
+ bmp:=TBitmap.Create;
+  with bmp do
     try
       LoadFromClipboardFormat(AFormat, AData, APalette);
-      Self.AssignHandle(Handle, False, 0);
+      Self.AssignBMPHandle(bmp, False, 0);
     finally
       Free;
     end {try}
@@ -5114,10 +5116,15 @@ begin
 end;
 
 {Prepares the Header chunk}
-procedure BuildHeader(Header: TChunkIHDR; Handle: HBitmap; Info: pBitmap);
+procedure BuildHeader(Header: TChunkIHDR; BMP: TBitmap; Info: pBitmap);
 var
   DC: HDC;
+  Dst:PByte;
+  Src:Pcardinal;
+  x, y:integer;
+  Handle:HBitmap;
 begin
+  Handle:=BMP.Handle;
   {Set width and height}
   Header.Width  := Info.bmWidth;
   Header.Height := abs(Info.bmHeight);
@@ -5125,7 +5132,9 @@ begin
   if Info.bmBitsPixel >= 16 then
     Header.BitDepth := 8 else Header.BitDepth := Info.bmBitsPixel;
   {Set color type}
-  if Info.bmBitsPixel >= 16 then
+  if (info.bmBitsPixel >= 32) then
+   Header.ColorType := COLOR_RGBALPHA
+  else if Info.bmBitsPixel >= 16 then
     Header.ColorType := COLOR_RGB else Header.ColorType := COLOR_PALETTE;
   {Set other info}
   Header.CompressionMethod := 0;  {deflate/inflate}
@@ -5134,9 +5143,32 @@ begin
   {Prepares bitmap headers to hold data}
   Header.PrepareImageData();
   {Copy image data}
+
   DC := CreateCompatibleDC(0);
-  GetDIBits(DC, Handle, 0, Header.Height, Header.ImageData,
-    pBitmapInfo(@Header.BitmapInfo)^, DIB_RGB_COLORS);
+
+  if GetDIBits(DC, Handle, 0, Header.Height, Header.ImageData,
+    pBitmapInfo(@Header.BitmapInfo)^, DIB_RGB_COLORS) <> BMP.Height then
+        Raise Exception.Create('GetDIBits failed.');
+
+  if (BMP.PixelFormat=pf32bit) then
+  if ((info.bmBitsPixel=32) and (header.ColorType=Color_rgbalpha)) then begin
+    if Header.ImageAlpha<>nil then begin
+
+       Dst:=Header.ImageAlpha;
+
+         for y:=0 to BMP.Height-1 do begin
+          Src:=BMP.ScanLine[y];
+           for x:=0 to BMP.Width-1 do begin
+            Dst^:=byte((Src^ shr 24) and $FF);
+
+            src:=pcardinal(cardinal(src)+4);
+            dst:=pbyte(cardinal(dst)+1);
+           end;
+           
+         end;
+    end;
+  end;
+
 
   DeleteDC(DC);
 end;
@@ -5185,12 +5217,7 @@ procedure TPngObject.AssignTo(Dest: TPersistent);
           8, 16:
             case ColorType of
               COLOR_RGB, COLOR_GRAYSCALE: DetectPixelFormat := pf24bit;
-              COLOR_PALETTE:
-               if TransparencyMode= ptmBit then
-                DetectPixelFormat := pf32bit
-               else
-                DetectPixelFormat := pf8bit;
-
+              COLOR_PALETTE: DetectPixelFormat := pf8bit;
               else raise Exception.Create('');
             end {case ColorFormat of}
           else raise Exception.Create('');
@@ -5203,6 +5230,7 @@ procedure TPngObject.AssignTo(Dest: TPersistent);
      d:pCardinal;
      al:pByteArray;
  begin
+  if (target.PixelFormat = pf32bit) and (src.AlphaScanline[0]<>nil) then begin
     for y:=0 to src.Height-1 do begin
      d:=target.ScanLine[y];
      al:=src.AlphaScanline[y];
@@ -5211,6 +5239,7 @@ procedure TPngObject.AssignTo(Dest: TPersistent);
        d:=pcardinal(cardinal(d)+4);
       end;
     end;
+  end;  
  end;
 var
   TRNS: TChunkTRNS;
@@ -5251,8 +5280,8 @@ begin
 end;
 
 {Assigns from a bitmap object}
-procedure TPngObject.AssignHandle(Handle: HBitmap; Transparent: Boolean;
-  TransparentColor: ColorRef);
+procedure TPngObject.AssignBMPHandle(BMP: TBitmap; Transparent: Boolean;
+      TransparentColor: ColorRef);
 var
   BitmapInfo: Windows.TBitmap;
   {Chunks}
@@ -5263,7 +5292,9 @@ var
   TRNS: TChunkTRNS;
   i: Integer;
   palEntries : TMaxLogPalette;
+  Handle : HBitmap;
 begin
+  Handle := BMP.Handle;
   {Obtain bitmap info}
   GetObject(Handle, SizeOf(BitmapInfo), @BitmapInfo);
 
@@ -5275,7 +5306,7 @@ begin
 
   {This method will fill the Header chunk with bitmap information}
   {and copy the image data}
-  BuildHeader(Header, Handle, @BitmapInfo);
+  BuildHeader(Header, BMP, @BitmapInfo);
 
   if Header.HasPalette then PLTE := TChunkPLTE.Create(Self) else PLTE := nil;
   if Transparent then TRNS := TChunkTRNS.Create(Self) else TRNS := nil;
@@ -5286,6 +5317,7 @@ begin
   TPNGPointerList(Chunks).Add(Header);
   if Header.HasPalette then TPNGPointerList(Chunks).Add(PLTE);
   if Transparent then TPNGPointerList(Chunks).Add(TRNS);
+
   TPNGPointerList(Chunks).Add(IDAT);
   TPNGPointerList(Chunks).Add(IEND);
 
