@@ -8,5 +8,6 @@ It has native support for most of png features including the partial transparenc
 This project was initially created by Gustavo Huffenbacher Daud (gustavo.daud at terra.com.br) and was hosted at http://pngdelphi.sourceforge.net
 
 ## Change Log ##
+2017-11-02	Properly set alpha channel when assigning from 32bit TBitmap.I.  
 2017-10-25      Added PNGImage class to emulate old (beta) version API.  
 
