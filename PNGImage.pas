@@ -5003,6 +5003,10 @@ begin
       *)
     else
     begin
+
+      if Header.HasPalette then
+        SetDIBColorTable(ACanvas.Handle, 0, Header.BitmapInfo.bmiHeader.biClrUsed, Header.BitmapInfo.bmiColors);
+
       SetStretchBltMode(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF}, COLORONCOLOR);
       StretchDiBits(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF}, Rect.Left,
         Rect.Top, Rect.Right - Rect.Left, Rect.Bottom - Rect.Top, 0, 0,
