@@ -514,7 +514,8 @@ type
     function GetPixels(const X, Y: Integer): TColor; virtual;
     procedure SetPixels(const X, Y: Integer; const Value: TColor); virtual;
 
-    function getPixelFormat:TPixelFormat;
+    Function RequiresConversionTo32Alpha:boolean;
+    function getRequiredPixelFormat:TPixelFormat;
 
   public
     {Gamma table array}
@@ -604,8 +605,7 @@ type
       SetPalette;{$ENDIF}
     {Returns the version}
     property Version: String read GetLibraryVersion;
-    property PixelFormat: TPixelFormat read getPixelFormat;
-
+    property RequiredPixelFormat: TPixelFormat read getRequiredPixelFormat;
   end;
 
   {Chunk name object}
@@ -804,6 +804,7 @@ type
   public
     {Palette values for transparency}
     PaletteValues: Array[Byte] of Byte;
+    Function NeedConvertTo32Alpha:boolean;
     {Returns if it uses bit transparency}
     property BitTransparency: Boolean read fBitTransparency;
     {Returns the transparent color}
@@ -2567,6 +2568,53 @@ begin
             end
       end {COLOR_PALETTE}
     end {case Header.ColorType};
+end;
+
+Function TChunktRNS.NeedConvertTo32Alpha:boolean;
+var tcnt, i, j:integer;
+    transparent_colors:TList;
+    PaletteChunk: TChunkPLTE;
+    quad, quad2:TRGBQuad;
+begin
+ result:=false;
+  if Header.ColorType = COLOR_PALETTE then begin
+
+     PaletteChunk := Owner.Chunks.ItemFromClass(TChunkPLTE) as TChunkPLTE;
+
+      tcnt:=0;
+      transparent_colors:=TList.Create;
+       try
+        for i := 0 to Self.DataSize - 1 do
+          if PaletteValues[i] <> $FF then begin
+           transparent_colors.Add(pointer(PaletteChunk.GetPaletteItem(i)));
+           inc(tcnt);
+          end;
+
+         Result:=tcnt > 1;
+
+         if not Result then begin
+          for j := 0 to transparent_colors.Count-1 do begin
+           quad:=TRGBQuad(transparent_colors[j]);
+
+           tcnt:=0;
+            for i:=0 to PaletteChunk.Count-1 do begin
+             quad2:=PaletteChunk.GetPaletteItem(i);
+             if CompareMem( @quad2, @quad, sizeof(quad)) then inc(tcnt);
+            end;
+
+           if (tcnt>1) then begin
+            result:=true;
+            break;
+           end;
+
+          end;
+         end;
+
+       finally
+        transparent_colors.Free;
+       end;
+
+  end;
 end;
 
 {Saving the chunk to a stream}
@@ -4884,6 +4932,9 @@ begin
             {Updates the image with the new pixel}
             with ImageData[i] do
             begin
+
+              {
+
               TransValue := TransparencyChunk.PaletteValues[PaletteIndex];
               rgbRed := (255 + PaletteChunk.Item[PaletteIndex].rgbRed *
                  TransValue + rgbRed * (255 - TransValue)) shr 8;
@@ -4891,6 +4942,14 @@ begin
                  TransValue + rgbGreen * (255 - TransValue)) shr 8;
               rgbBlue := (255 + PaletteChunk.Item[PaletteIndex].rgbBlue *
                  TransValue + rgbBlue * (255 - TransValue)) shr 8;
+
+                 }
+
+              rgbRed :=  PaletteChunk.Item[PaletteIndex].rgbRed;
+              rgbGreen :=  PaletteChunk.Item[PaletteIndex].rgbGreen;
+              rgbBlue :=  PaletteChunk.Item[PaletteIndex].rgbBlue;
+
+              rgbReserved:= TransparencyChunk.PaletteValues[PaletteIndex];
             end;
 
             {Move to next data}
@@ -4932,11 +4991,16 @@ begin
     ptmPartial:
       DrawPartialTrans(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF}, Rect);
   {$ENDIF}
-    ptmBit: DrawTransparentBitmap(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF},
+    ptmBit:
+
+      DrawPartialTrans(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF}, Rect);
+      (*
+      DrawTransparentBitmap(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF},
       Header.ImageData, Header.BitmapInfo.bmiHeader,
       pBitmapInfo(@Header.BitmapInfo), Rect,
       {$IFDEF UseDelphi}ColorToRGB({$ENDIF}TransparentColor)
       {$IFDEF UseDelphi}){$ENDIF}
+      *)
     else
     begin
       SetStretchBltMode(ACanvas{$IFDEF UseDelphi}.Handle{$ENDIF}, COLORONCOLOR);
@@ -5215,13 +5279,20 @@ procedure TPngObject.AssignTo(Dest: TPersistent);
           2, 4: DetectPixelFormat := pf4bit;
           {8 may be palette or r, g, b values}
           8, 16:
+           begin
             case ColorType of
               COLOR_RGB, COLOR_GRAYSCALE: DetectPixelFormat := pf24bit;
               COLOR_PALETTE: DetectPixelFormat := pf8bit;
               else raise Exception.Create('');
-            end {case ColorFormat of}
+            end; {case ColorFormat of}
+
+            if RequiresConversionTo32Alpha then
+              DetectPixelFormat := pf32bit
+           end;
           else raise Exception.Create('');
         end {case BitDepth of}
+
+
     end {with Header}
   end;
 
@@ -5798,14 +5869,17 @@ begin
 end;
 
 {Returns the loaded pixel format}
-function TPngObject.getPixelFormat:TPixelFormat;
+function TPngObject.getRequiredPixelFormat:TPixelFormat;
 begin
  case header.ColorType of
   COLOR_GRAYSCALE: result:=pf1bit;
   COLOR_RGB: result:=pf24bit;
   COLOR_PALETTE:
    begin
-    Result:=pf8bit;
+    if RequiresConversionTo32Alpha then
+     Result:=pf32bit
+    else
+     Result:=pf8bit;
    end;
   COLOR_GRAYSCALEALPHA:
    begin
@@ -5817,6 +5891,17 @@ begin
    end;
   else
    result:=pfCustom;
+  end;
+end;
+
+Function TPngObject.RequiresConversionTo32Alpha:boolean;
+var TRNS:TChunktRNS;
+begin
+ result:=false;
+  if header.ColorType=COLOR_PALETTE then begin
+     TRNS := Chunks.ItemFromClass(TChunkTRNS) as TChunkTRNS;
+     if Assigned(TRNS) then
+      result:=TRNS.NeedConvertTo32Alpha;
   end;
 end;
 

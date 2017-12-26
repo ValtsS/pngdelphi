@@ -43,7 +43,6 @@ begin
 end;
 
 procedure TPNGImage.Assign(Source: TPersistent);
-var po:TPNGObject;
 begin
  inherited;
 end;
@@ -56,7 +55,7 @@ begin
  with png do begin
   try
    LoadFromClipboardFormat(AFormat, AData, APalette);
-   self.PixelFormat:=png.PixelFormat;
+   self.PixelFormat:=png.RequiredPixelFormat;
    self.Assign(Png);
   finally
    Free;
@@ -72,7 +71,7 @@ begin
  with png do begin
   try
    LoadFromResourceID(InstanceSize, ResID);
-   self.PixelFormat:=png.PixelFormat;
+   self.PixelFormat:=png.RequiredPixelFormat;
    self.Assign(png);
   finally
    Free;
@@ -87,7 +86,7 @@ begin
  with png do begin
   try
    LoadFromResourceName(Instance, ResName);
-   self.PixelFormat:=png.PixelFormat;
+   self.PixelFormat:=png.RequiredPixelFormat;
    self.Assign(png);
   finally
    Free;
@@ -102,7 +101,7 @@ begin
  with png do begin
   try
    LoadFromStream(Stream);
-   self.PixelFormat:=png.PixelFormat;
+   self.PixelFormat:=png.RequiredPixelFormat;
    self.Assign(Png);
   finally
    Free;
