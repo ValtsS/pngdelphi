@@ -4812,13 +4812,14 @@ begin
 
   {Prepare to create the bitmap}
   Fillchar(BitmapInfo, sizeof(BitmapInfo), #0);
-  BitmapInfoHeader.biWidth := W;
-  BitmapInfoHeader.biHeight := -Integer(H);
   BitmapInfo.bmiHeader := BitmapInfoHeader;
+  BitmapInfo.bmiHeader.biWidth := W;
+  BitmapInfo.bmiHeader.biHeight := -Integer(H);
+
 
   {Create the bitmap which will receive the background, the applied}
   {alpha blending and then will be painted on the background}
-  BufferDC := CreateCompatibleDC(0);
+  BufferDC := CreateCompatibleDC(DC);
   {In case BufferDC could not be created}
   if (BufferDC = 0) then RaiseError(EPNGOutMemory, EPNGOutMemoryText);
   BufferBitmap := CreateDIBSection(BufferDC, BitmapInfo, DIB_RGB_COLORS,
@@ -4984,8 +4985,9 @@ begin
   {Quit in case there is no header, otherwise obtain it}
   if Empty then Exit;
   Header := Chunks.GetItem(0) as TChunkIHDR;
-
   {Copy the data to the canvas}
+  ACanvas.Lock;
+  try
   case Self.TransparencyMode of
   {$IFDEF PartialTransparentDraw}
     ptmPartial:
@@ -5014,6 +5016,9 @@ begin
         pBitmapInfo(@Header.BitmapInfo)^, DIB_RGB_COLORS, SRCCOPY)
     end
   end {case}
+  finally
+   ACanvas.Unlock;
+  end;
 end;
 
 {Characters for the header}
@@ -5332,6 +5337,8 @@ begin
     TBitmap(Dest).PixelFormat := DetectPixelFormat;
     TBitmap(Dest).Width := Width;
     TBitmap(Dest).Height := Height;
+    TBitmap(Dest).Canvas.Lock;
+    try
     TBitmap(Dest).Canvas.Draw(0, 0, Self);
 
     if TransparencyMode = ptmPartial then
@@ -5346,7 +5353,9 @@ begin
       TBitmap(Dest).TransparentColor := TRNS.TransparentColor;
       TBitmap(Dest).Transparent := True
     end {if (TransparencyMode = ptmBit)}
-
+    finally
+     TBitmap(Dest).Canvas.Unlock;
+    end;
   end
   else
     {Unknown destination kind}

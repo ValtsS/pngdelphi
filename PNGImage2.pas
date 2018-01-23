@@ -44,7 +44,12 @@ end;
 
 procedure TPNGImage.Assign(Source: TPersistent);
 begin
- inherited;
+ Canvas.Lock;
+ try
+  inherited;
+ finally
+  Canvas.Unlock;
+ end;
 end;
 
 
