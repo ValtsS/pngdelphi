@@ -568,7 +568,9 @@ type
       TransparentColor: ColorRef);
     {Draws the image into a canvas}
     procedure Draw(ACanvas: TCanvas; const Rect: TRect);
-      {$IFDEF UseDelphi}override;{$ENDIF}
+    {$IFDEF UseDelphi}override;{$ENDIF}
+    {Draws the image into bitmap}
+    procedure DrawBitmap(bmp:TBitmap; const Rect: TRect);
     {Width and height properties}
     property Width: Integer read GetWidth;
     property Height: Integer read GetHeight;
@@ -1009,6 +1011,29 @@ var
   crc_table: Array[0..255] of Cardinal;
   {Flag: has the table been computed? Initially false}
   crc_table_computed: Boolean;
+
+type TBCanvas = class
+  fdc:HDC;
+  old:HBITMAP;
+ public
+  Constructor Create(bmp:TBitmap);
+  Destructor Destroy;override;
+  property DC:HDC read fdc;
+end;
+
+Constructor TBCanvas.Create(bmp:TBitmap);
+begin
+ inherited Create;
+  fdc:=CreateCompatibleDC(0);
+  old:=SelectObject(fdc, bmp.Handle);
+end;
+
+Destructor TBCanvas.Destroy;
+begin
+  SelectObject(fdc, old);
+  DeleteDC(fdc);
+ inherited;
+end;
 
 {Draw transparent image using transparent color}
 procedure DrawTransparentBitmap(dc: HDC; srcBits: Pointer;
@@ -5020,6 +5045,48 @@ begin
    ACanvas.Unlock;
   end;
 end;
+
+procedure TPngObject.DrawBitmap(bmp:TBitmap; const Rect: TRect);
+var
+  Header: TChunkIHDR;
+  bcanvas:TBCanvas;
+begin
+  {Quit in case there is no header, otherwise obtain it}
+  if Empty then Exit;
+  Header := Chunks.GetItem(0) as TChunkIHDR;
+  {Copy the data to the canvas}
+
+  bcanvas:=TBCanvas.Create(bmp);
+  try
+
+	  case Self.TransparencyMode of
+	  {$IFDEF PartialTransparentDraw}
+		ptmPartial:
+		  DrawPartialTrans(bcanvas.DC, Rect);
+	  {$ENDIF}
+		ptmBit:
+		  DrawPartialTrans(bcanvas.DC, Rect);
+		else
+		begin
+
+		  if Header.HasPalette then
+			SetDIBColorTable(bcanvas.DC, 0, Header.BitmapInfo.bmiHeader.biClrUsed, Header.BitmapInfo.bmiColors);
+
+		  SetStretchBltMode(bcanvas.DC, COLORONCOLOR);
+		  StretchDiBits(bcanvas.DC, Rect.Left,
+			Rect.Top, Rect.Right - Rect.Left, Rect.Bottom - Rect.Top, 0, 0,
+			Header.Width, Header.Height, Header.ImageData,
+			pBitmapInfo(@Header.BitmapInfo)^, DIB_RGB_COLORS, SRCCOPY)
+		end
+	  end {case}
+
+
+  finally
+   bcanvas.Free;
+  end;
+
+end;
+
 
 {Characters for the header}
 const
