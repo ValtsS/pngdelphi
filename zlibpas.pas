@@ -80,7 +80,7 @@ const
 
   Z_DEFLATED = 8;
 
-  _z_errmsg: array[0..9] of PChar = (
+  z_errmsg: array[0..9] of PChar = (
     'need dictionary',      // Z_NEED_DICT      (2)
     'stream end',           // Z_STREAM_END     (1)
     '',                     // Z_OK             (0)
@@ -109,15 +109,22 @@ implementation
 
 function adler32(adler: LongInt; const buf: PChar; len: Integer): LongInt; external;
 
-procedure _memset(P: Pointer; B: Byte; count: Integer);cdecl;
+procedure memset(P: Pointer; B: Byte; count: Integer);cdecl;
 begin
   FillChar(P^, count, B);
 end;
 
-procedure _memcpy(dest, source: Pointer; count: Integer);cdecl;
+procedure memcpy(dest, source: Pointer; count: Integer);cdecl;
 begin
   Move(source^, dest^, count);
 end;
+
+procedure _llmod;
+asm
+  jmp System.@_llmod
+end;
+
+
 
 
 // deflate compresses data
